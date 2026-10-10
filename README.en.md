@@ -120,6 +120,34 @@ header cannot be included, as it pulls in LovyanGFX and the Arduino core. A
 mismatch makes the check meaningless rather than wrong, so re-run `make check`
 after touching the layout.
 
+## Screen orientation
+
+The image can be turned 180 degrees with the `FLIP_DISPLAY` flag in
+`esp32-weather/config.h`:
+
+| Value | LovyanGFX rotation | When |
+|---|---|---|
+| `1` (default) | `setRotation(3)` | USB socket on one side |
+| `0` | `setRotation(1)` | USB socket on the other |
+
+The same can be set at build time without editing the file:
+
+```sh
+make flash FLIP=0   # flip back
+make flash FLIP=1   # flip
+make flash          # use whatever config.h says
+```
+
+**Touch needs no recalibration after flipping.** LovyanGFX stores the
+calibration as a raw-to-panel-native mapping (`Panel_Device::setCalibrate`) and
+applies the current rotation separately (`Panel_Device::convertRawXY`). On top
+of that, `calibrate_touch` deliberately cancels the rotation before sampling the
+corners and restores it afterwards, so what is saved in NVS is rotation
+independent and touch flips along with the image by itself.
+
+The active orientation is printed at boot:
+`[boot] rotation 3 (flipped 180)`.
+
 ## Touch
 
 A resistive panel has no fixed coordinate mapping, so on first boot the firmware

@@ -15,9 +15,23 @@
 #define PIN_LCD_RST  -1  // tied to the module's own reset circuit
 #define PIN_LCD_BL   27  // backlight, driven as PWM
 
-// The panel is wired portrait; the UI runs landscape via setRotation(1).
+// The panel is wired portrait; the UI runs landscape.
 #define LCD_PANEL_W 320
 #define LCD_PANEL_H 480
+
+// Screen orientation. Set FLIP_DISPLAY to 1 to turn the image 180 degrees,
+// for when the board is mounted with its USB socket on the other side, or to 0
+// for the other way up. Override without editing this file:
+//   make flash FLIP=0
+//
+// Touch follows the image on its own and the calibration stored in NVS stays
+// valid: LovyanGFX keeps it as a raw-to-panel-native mapping
+// (Panel_Device::setCalibrate) and applies the current rotation separately
+// (Panel_Device::convertRawXY), so rotating never invalidates it.
+#ifndef FLIP_DISPLAY
+#define FLIP_DISPLAY 1
+#endif
+#define LCD_ROTATION (FLIP_DISPLAY ? 3 : 1)
 
 // XPT2046 resistive touch. It shares the panel's SPI bus (SCLK/MOSI/MISO
 // above) with its own chip select; discovered by probing, since the board

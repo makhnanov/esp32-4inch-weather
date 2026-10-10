@@ -15,6 +15,15 @@ BUILD ?= build
 # the repository can be named -- and cloned as -- anything.
 SKETCH := esp32-weather
 
+# Rotate the image 180 degrees without editing config.h, e.g. `make flash FLIP=0`.
+# Left unset, the default in esp32-weather/config.h applies.
+FLIP ?=
+ifneq ($(FLIP),)
+FLIPFLAG := --build-property compiler.cpp.extra_flags=-DFLIP_DISPLAY=$(FLIP)
+else
+FLIPFLAG :=
+endif
+
 .PHONY: all deps secrets compile flash monitor clean
 
 all: compile
@@ -31,7 +40,7 @@ secrets:
 	python3 tools/gen_secrets.py
 
 compile: secrets
-	arduino-cli compile -b $(FQBN) --build-path $(BUILD) $(SKETCH)
+	arduino-cli compile -b $(FQBN) $(FLIPFLAG) --build-path $(BUILD) $(SKETCH)
 
 flash: compile
 	arduino-cli upload -b $(FQBN) -p $(PORT) --input-dir $(BUILD) $(SKETCH)

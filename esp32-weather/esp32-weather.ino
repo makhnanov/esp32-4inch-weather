@@ -145,9 +145,11 @@ void setup() {
   delay(200);
   Serial.println();
   Serial.println(F("[boot] weather display, ST7796 + XPT2046"));
+  Serial.printf("[boot] rotation %d%s\n", LCD_ROTATION,
+                FLIP_DISPLAY ? " (flipped 180)" : "");
 
   tft.init();
-  tft.setRotation(1);  // landscape: 480x320
+  tft.setRotation(LCD_ROTATION);  // landscape: 480x320
   tft.setBrightness(255);
   tft.fillScreen(C_BG);
 
