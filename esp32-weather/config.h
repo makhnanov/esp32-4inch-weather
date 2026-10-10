@@ -1,0 +1,61 @@
+#pragma once
+#include <stdint.h>
+
+// ---------------------------------------------------------------------------
+// Board: Sunton/Guition ESP32-4832S040
+//   4.0" IPS 480x320, ST7796 over SPI, GT911 capacitive touch, ESP32-WROOM-32E
+// ---------------------------------------------------------------------------
+
+// ST7796 display, SPI2 (HSPI)
+#define PIN_LCD_SCLK 14
+#define PIN_LCD_MOSI 13
+#define PIN_LCD_MISO 12
+#define PIN_LCD_CS   15
+#define PIN_LCD_DC    2
+#define PIN_LCD_RST  -1  // tied to the module's own reset circuit
+#define PIN_LCD_BL   27  // backlight, driven as PWM
+
+// The panel is wired portrait; the UI runs landscape via setRotation(1).
+#define LCD_PANEL_W 320
+#define LCD_PANEL_H 480
+
+// XPT2046 resistive touch. It shares the panel's SPI bus (SCLK/MOSI/MISO
+// above) with its own chip select; discovered by probing, since the board
+// carries the resistive controller rather than a capacitive GT911.
+#define PIN_TP_CS 33
+// The pen-interrupt line is left unused: LovyanGFX treats a high level on it
+// as "not touched", so a mis-guessed pin would silently kill touch. Polling
+// over SPI works no matter how that line is wired.
+#define PIN_TP_IRQ -1
+// XPT2046 is a slow part; 1 MHz is well inside spec.
+#define TP_SPI_HZ 1000000
+
+// Landscape screen geometry, after setRotation(1).
+static constexpr int SCREEN_W = 480;
+static constexpr int SCREEN_H = 320;
+
+// ---------------------------------------------------------------------------
+// Cities. Tab order; index 0 is the default shown at boot.
+// ---------------------------------------------------------------------------
+struct City {
+  const char* name;  // tab label (UTF-8)
+  float lat;
+  float lon;
+};
+
+static const City CITIES[] = {
+  { "Алматы", 43.2567f, 76.9286f },
+  { "Омск",   54.9914f, 73.3645f },
+  { "Томск",  56.4846f, 84.9476f },
+  { "Астана", 51.1694f, 71.4491f },
+  { "Питер",  59.9311f, 30.3609f },
+};
+static constexpr uint8_t CITY_COUNT   = sizeof(CITIES) / sizeof(CITIES[0]);
+static constexpr uint8_t DEFAULT_CITY = 0;  // Алматы
+
+// ---------------------------------------------------------------------------
+// Timing
+// ---------------------------------------------------------------------------
+static constexpr uint32_t REFRESH_MS      = 10UL * 60UL * 1000UL;  // data is stale after this
+static constexpr uint32_t RETRY_MS        = 30UL * 1000UL;         // backoff after a failed fetch
+static constexpr uint32_t WIFI_TIMEOUT_MS = 20UL * 1000UL;         // per connection attempt

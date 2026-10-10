@@ -1,0 +1,14 @@
+# Credentials, and the header generated from them. .env.example documents the
+# format instead. Never commit either of these.
+.env
+.env.*
+!.env.example
+secrets.h
+esp32-weather/secrets.h
+
+# Build output. A compiled binary embeds the Wi-Fi credentials as plain
+# strings, so this must stay ignored for the same reason as .env.
+/build/
+*.bin
+*.elf
+*.map
