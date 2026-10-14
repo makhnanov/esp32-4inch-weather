@@ -67,9 +67,33 @@ static const City CITIES[] = {
 static constexpr uint8_t CITY_COUNT   = sizeof(CITIES) / sizeof(CITIES[0]);
 static constexpr uint8_t DEFAULT_CITY = 0;  // Алматы
 
+// The clock in the status bar is always read in this city's timezone, whichever
+// tab is open: the board hangs on a wall in Almaty, so "обновлено 13:45" has to
+// mean the wall clock in the room and not noon in Saint Petersburg.
+static constexpr uint8_t HOME_CITY = 0;  // Алматы
+// Used until the home city's own reading arrives and brings the real offset
+// along: Almaty is UTC+5 and keeps no daylight saving.
+static constexpr int32_t HOME_UTC_OFFSET_FALLBACK = 5 * 3600;
+
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
 static constexpr uint32_t REFRESH_MS      = 10UL * 60UL * 1000UL;  // data is stale after this
 static constexpr uint32_t RETRY_MS        = 30UL * 1000UL;         // backoff after a failed fetch
 static constexpr uint32_t WIFI_TIMEOUT_MS = 20UL * 1000UL;         // per connection attempt
+
+// ---------------------------------------------------------------------------
+// Backlight and screen blanking
+// ---------------------------------------------------------------------------
+
+// Backlight level while the screen is on; blanking drives it to 0.
+static constexpr uint8_t BACKLIGHT_ON = 255;
+
+// The status-bar button opens a menu of spans, one button per hour up to this
+// many. It also sets the shape of that menu's grid, so keep it a multiple of
+// MENU_COLS in ui.h (or accept a short last row).
+static constexpr uint8_t  SLEEP_MAX_HOURS = 8;
+// A menu left open gets itself out of the way again, so a stray tap cannot
+// park the display behind a dialog for good.
+static constexpr uint32_t MENU_TIMEOUT_MS = 15UL * 1000UL;
+static constexpr uint32_t HOUR_MS         = 3600UL * 1000UL;

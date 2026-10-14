@@ -14,6 +14,7 @@ extern const uint8_t u8g2_font_fub42_tn[];
 
 #define RU12  u8g2_font_6x12_t_cyrillic
 #define RU15  u8g2_font_9x15_t_cyrillic
+#define RU20  u8g2_font_10x20_t_cyrillic
 #define NUM25 u8g2_font_fub25_tn
 #define NUM42 u8g2_font_fub42_tn
 
@@ -85,6 +86,21 @@ static int tw(const uint8_t *f, const char *s) {
 #define STAT_R_CX 174
 #define SCREEN_W 480
 #define CITY_COUNT 5
+#define BTN_W 120
+#define BTN_X ((SCREEN_W - BTN_W) / 2)
+#define SCREEN_H 320
+#define SLEEP_MAX_HOURS 8
+#define MENU_COLS 4
+#define MENU_ROWS ((SLEEP_MAX_HOURS + MENU_COLS - 1) / MENU_COLS)
+#define MENU_BW 68
+#define MENU_BH 44
+#define MENU_GAP 10
+#define MENU_PAD 14
+#define MENU_TITLE_H 44
+#define MENU_CANCEL_H 34
+#define MENU_GRID_H (MENU_ROWS * MENU_BH + (MENU_ROWS - 1) * MENU_GAP)
+#define MENU_W (MENU_PAD * 2 + MENU_COLS * MENU_BW + (MENU_COLS - 1) * MENU_GAP)
+#define MENU_H (MENU_TITLE_H + MENU_GRID_H + 12 + MENU_CANCEL_H + MENU_PAD)
 
 static int fails = 0;
 static void check(const char *what, int ok, const char *detail) {
@@ -165,6 +181,54 @@ int main(void) {
     snprintf(d, sizeof d, "\"%s\" = %dpx of %d", cities[i], w, tabw);
     check("tab label fits", w <= tabw - 8, d);
   }
+
+  printf("== status bar ==\n");
+  /* Three things share one 480 px strip: the connection state on the left, the
+     blanking button in the middle, the timestamp on the right. */
+  const char *stats[] = {"Онлайн", "Нет Wi-Fi", "Обновление...", "Ошибка сети"};
+  int ws = 0; const char *wss = "";
+  for (unsigned i = 0; i < sizeof stats / sizeof *stats; i++) {
+    const int w = tw(RU12, stats[i]);
+    if (w > ws) { ws = w; wss = stats[i]; }
+  }
+  snprintf(d, sizeof d, "widest \"%s\" ends %d, button starts %d", wss, PAD + ws, BTN_X);
+  check("status text clears button", PAD + ws < BTN_X - 8, d);
+
+  const int wts = tw(RU12, "обновлено 00:00");
+  snprintf(d, sizeof d, "\"обновлено 00:00\" starts %d, button ends %d",
+           SCREEN_W - PAD - wts, BTN_X + BTN_W);
+  check("timestamp clears button", SCREEN_W - PAD - wts > BTN_X + BTN_W + 8, d);
+
+  const int wb12 = tw(RU12, "Отключить");
+  snprintf(d, sizeof d, "\"Отключить\" = %dpx of %d", wb12, BTN_W);
+  check("button label fits", wb12 <= BTN_W - 12, d);
+
+  printf("== blanking menu ==\n");
+  snprintf(d, sizeof d, "card %dx%d on a %dx%d screen", MENU_W, MENU_H, SCREEN_W, SCREEN_H);
+  check("menu card fits on screen", MENU_W <= SCREEN_W - 16 && MENU_H <= SCREEN_H - 16, d);
+
+  const int wt = tw(RU15, "На сколько отключить?");
+  snprintf(d, sizeof d, "title %dpx, room %d", wt, MENU_W - 2 * MENU_PAD);
+  check("menu title fits", wt <= MENU_W - 2 * MENU_PAD, d);
+
+  int wb = 0; char hb[8];
+  for (int i = 1; i <= SLEEP_MAX_HOURS; i++) {
+    snprintf(hb, sizeof hb, "%d ч", i);
+    const int w = tw(RU20, hb);
+    if (w > wb) wb = w;
+  }
+  snprintf(d, sizeof d, "widest hour label %dpx, button %d wide", wb, MENU_BW);
+  check("hour labels fit buttons", wb <= MENU_BW - 10, d);
+
+  const int wc = tw(RU15, "Отмена");
+  snprintf(d, sizeof d, "\"Отмена\" %dpx, button %d wide", wc, MENU_W - 2 * MENU_PAD);
+  check("cancel label fits", wc <= MENU_W - 2 * MENU_PAD - 10, d);
+
+  /* The grid is laid out from MENU_PAD, so the last column must land inside
+     the card by exactly the same padding. */
+  const int lastRight = MENU_PAD + MENU_COLS * MENU_BW + (MENU_COLS - 1) * MENU_GAP;
+  snprintf(d, sizeof d, "last column ends %d, card is %d wide", lastRight, MENU_W);
+  check("grid fits the card", lastRight == MENU_W - MENU_PAD, d);
 
   printf("\n%s\n", fails ? "LAYOUT: problems found" : "LAYOUT: all checks passed");
   return fails != 0;

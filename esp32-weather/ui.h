@@ -23,7 +23,7 @@
 //   |  Осадки      0.0 мм |  Осадки          0%        |
 //   |  Мин/макс   9°/20°  |  Ночью           9°        |
 //   +--------------------------------------------------+  292
-//   | status                              обновлено .. |
+//   | status        ( Отключить )         обновлено .. |
 //   +--------------------------------------------------+  320
 // ---------------------------------------------------------------------------
 
@@ -36,6 +36,45 @@ static constexpr int PANEL_L_X = 4;
 static constexpr int PANEL_R_X = 242;
 static constexpr int PAD       = 14;
 static constexpr int STATUS_Y  = 296;
+
+// The blanking button sits in the middle of the status strip. The drawn pill is
+// only as tall as the strip, so its touch area reaches up into the gap above --
+// a resistive panel puts a fingertip a few pixels off, and a 20 px target hit
+// from an arm's length away needs the slack.
+static constexpr int BTN_W       = 120;
+static constexpr int BTN_H       = 20;
+static constexpr int BTN_X       = (SCREEN_W - BTN_W) / 2;
+static constexpr int BTN_Y       = STATUS_Y + 2;
+static constexpr int BTN_HIT_PAD = 10;
+static constexpr char BTN_LABEL[] = "Отключить";
+
+// The button opens a modal card with one button per hour. Its size follows
+// from the grid rather than the other way round, so raising SLEEP_MAX_HOURS
+// just adds a row.
+//
+//   +----------------------------------+
+//   |     На сколько отключить?        |
+//   |  [1 ч] [2 ч] [3 ч] [4 ч]         |
+//   |  [5 ч] [6 ч] [7 ч] [8 ч]         |
+//   |  [          Отмена          ]    |
+//   +----------------------------------+
+static constexpr int MENU_COLS      = 4;
+static constexpr int MENU_ROWS      = (SLEEP_MAX_HOURS + MENU_COLS - 1) / MENU_COLS;
+static constexpr int MENU_BW        = 68;
+static constexpr int MENU_BH        = 44;
+static constexpr int MENU_GAP       = 10;
+static constexpr int MENU_PAD       = 14;
+static constexpr int MENU_TITLE_H   = 44;
+static constexpr int MENU_CANCEL_H  = 34;
+static constexpr int MENU_GRID_H    = MENU_ROWS * MENU_BH + (MENU_ROWS - 1) * MENU_GAP;
+static constexpr int MENU_W         = MENU_PAD * 2 + MENU_COLS * MENU_BW +
+                                      (MENU_COLS - 1) * MENU_GAP;
+static constexpr int MENU_H         = MENU_TITLE_H + MENU_GRID_H + 12 +
+                                      MENU_CANCEL_H + MENU_PAD;
+static constexpr int MENU_X         = (SCREEN_W - MENU_W) / 2;
+static constexpr int MENU_Y         = (SCREEN_H - MENU_H) / 2;
+static constexpr int MENU_GRID_Y    = MENU_Y + MENU_TITLE_H;
+static constexpr int MENU_CANCEL_Y  = MENU_GRID_Y + MENU_GRID_H + 12;
 
 // Vertical anchors inside a panel
 static constexpr int Y_TITLE = PANEL_TOP + 16;
@@ -91,6 +130,18 @@ inline int putTemp(lgfx::LGFXBase& g, int x, int cy, float v, uint16_t col,
   if (ringR >= 4) g.drawCircle(rcx, rcy, ringR - 1, col);
   if (ringR >= 6) g.drawCircle(rcx, rcy, ringR - 2, col);  // heavier stroke
   return tw + ringR * 3;
+}
+
+// ---------------------------------------------------------------------------
+// Clock. Readings carry their time in UTC (see Wx::obs_min_utc), so any city's
+// observation can be shown on the home city's clock -- which is the only one
+// the person in front of the screen can check against the wall.
+// ---------------------------------------------------------------------------
+
+inline void fmtClock(int16_t minUtc, int32_t offsetSec, char* buf, size_t n) {
+  int m = (minUtc + (int)(offsetSec / 60)) % 1440;
+  if (m < 0) m += 1440;
+  snprintf(buf, n, "%02d:%02d", m / 60, m % 60);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +340,24 @@ inline void drawTomorrowPanel(Display& g, const Wx& wx) {
 // Status bar
 // ---------------------------------------------------------------------------
 
-inline void drawStatus(Display& g, const char* msg, uint16_t col, const Wx& wx) {
+// Lit up while its menu is open, so the card reads as belonging to the button.
+inline void drawSleepButton(Display& g, bool active) {
+  g.fillRoundRect(BTN_X, BTN_Y, BTN_W, BTN_H, BTN_H / 2, active ? C_TAB_ON : C_TAB_OFF);
+  g.drawRoundRect(BTN_X, BTN_Y, BTN_W, BTN_H, BTN_H / 2, active ? C_ACCENT : C_DIVIDER);
+  g.setFont(&FontRU12);
+  g.setTextColor(active ? C_TEXT : C_TEXT_DIM);
+  g.setTextDatum(lgfx::middle_center);
+  g.drawString(BTN_LABEL, BTN_X + BTN_W / 2, BTN_Y + BTN_H / 2 - 1);
+}
+
+// True for a touch anywhere on the blanking button.
+inline bool sleepBtnHitTest(int x, int y) {
+  return y >= BTN_Y - BTN_HIT_PAD && x >= BTN_X - BTN_HIT_PAD &&
+         x < BTN_X + BTN_W + BTN_HIT_PAD;
+}
+
+inline void drawStatus(Display& g, const char* msg, uint16_t col, const Wx& wx,
+                       int32_t homeOffsetSec, bool btnActive) {
   g.fillRect(0, STATUS_Y, SCREEN_W, SCREEN_H - STATUS_Y, C_BG);
   g.drawFastHLine(0, STATUS_Y, SCREEN_W, C_DIVIDER);
 
@@ -298,13 +366,83 @@ inline void drawStatus(Display& g, const char* msg, uint16_t col, const Wx& wx) 
   g.setTextDatum(lgfx::middle_left);
   g.drawString(msg, PAD, STATUS_Y + 13);
 
-  if (wx.valid) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "обновлено %s", wx.local_time);
+  drawSleepButton(g, btnActive);
+
+  if (wx.valid && wx.obs_min_utc >= 0) {
+    char clock[6], buf[32];
+    fmtClock(wx.obs_min_utc, homeOffsetSec, clock, sizeof(clock));
+    snprintf(buf, sizeof(buf), "обновлено %s", clock);
+    g.setFont(&FontRU12);
     g.setTextColor(C_TEXT_MUT);
     g.setTextDatum(lgfx::middle_right);
     g.drawString(buf, SCREEN_W - PAD, STATUS_Y + 13);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Blanking menu
+//
+// A modal card: one button per hour, plus a way out. It is drawn over the two
+// panels, so whoever closes it has to repaint the screen -- see repaintAll()
+// in the sketch -- and no background refresh may paint while it is up.
+// ---------------------------------------------------------------------------
+
+inline int menuBtnX(uint8_t i) {
+  return MENU_X + MENU_PAD + (i % MENU_COLS) * (MENU_BW + MENU_GAP);
+}
+inline int menuBtnY(uint8_t i) {
+  return MENU_GRID_Y + (i / MENU_COLS) * (MENU_BH + MENU_GAP);
+}
+
+inline void drawSleepMenu(Display& g) {
+  g.fillRoundRect(MENU_X, MENU_Y, MENU_W, MENU_H, 12, C_PANEL);
+  g.drawRoundRect(MENU_X, MENU_Y, MENU_W, MENU_H, 12, C_ACCENT);
+
+  g.setFont(&FontRU15);
+  g.setTextColor(C_TEXT);
+  g.setTextDatum(lgfx::middle_center);
+  g.drawString("На сколько отключить?", MENU_X + MENU_W / 2, MENU_Y + 23);
+
+  for (uint8_t i = 0; i < SLEEP_MAX_HOURS; i++) {
+    const int bx = menuBtnX(i), by = menuBtnY(i);
+    g.fillRoundRect(bx, by, MENU_BW, MENU_BH, 8, C_TAB_ON);
+    g.drawRoundRect(bx, by, MENU_BW, MENU_BH, 8, C_DIVIDER);
+    char label[8];
+    snprintf(label, sizeof(label), "%u ч", (unsigned)(i + 1));
+    g.setFont(&FontRU20);
+    g.setTextColor(C_TEXT);
+    g.setTextDatum(lgfx::middle_center);
+    g.drawString(label, bx + MENU_BW / 2, by + MENU_BH / 2 - 1);
+  }
+
+  const int cx = MENU_X + MENU_PAD, cw = MENU_W - MENU_PAD * 2;
+  g.fillRoundRect(cx, MENU_CANCEL_Y, cw, MENU_CANCEL_H, 8, C_TAB_OFF);
+  g.drawRoundRect(cx, MENU_CANCEL_Y, cw, MENU_CANCEL_H, 8, C_DIVIDER);
+  g.setFont(&FontRU15);
+  g.setTextColor(C_TEXT_DIM);
+  g.setTextDatum(lgfx::middle_center);
+  g.drawString("Отмена", MENU_X + MENU_W / 2, MENU_CANCEL_Y + MENU_CANCEL_H / 2 - 1);
+}
+
+// What a touch in an open menu means: 1..SLEEP_MAX_HOURS picks a span, 0
+// dismisses -- the Отмена button, or anywhere outside the card, since tapping
+// away from a dialog is how everyone expects to be rid of it -- and -1 is a
+// dead tap on the card's own background, which must do nothing at all rather
+// than fall through to the tabs underneath.
+inline int sleepMenuHitTest(int x, int y) {
+  if (x < MENU_X || x >= MENU_X + MENU_W || y < MENU_Y || y >= MENU_Y + MENU_H)
+    return 0;
+
+  for (uint8_t i = 0; i < SLEEP_MAX_HOURS; i++) {
+    const int bx = menuBtnX(i), by = menuBtnY(i);
+    if (x >= bx && x < bx + MENU_BW && y >= by && y < by + MENU_BH) return i + 1;
+  }
+
+  if (y >= MENU_CANCEL_Y && y < MENU_CANCEL_Y + MENU_CANCEL_H &&
+      x >= MENU_X + MENU_PAD && x < MENU_X + MENU_W - MENU_PAD)
+    return 0;
+
+  return -1;
 }
 
 // ---------------------------------------------------------------------------

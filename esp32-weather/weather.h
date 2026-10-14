@@ -34,7 +34,11 @@ struct Wx {
   int   pop_tmr   = 0;
   int   code_tmr  = 0;
 
-  char local_time[6] = "--:--";  // observation time in the city's own timezone
+  // Observation time, as minutes since UTC midnight, with the city's own
+  // offset from UTC beside it. Keeping it in UTC is what lets the status bar
+  // render any city's reading on the home city's clock. -1 until data lands.
+  int16_t obs_min_utc = -1;
+  int32_t utc_offset  = 0;  // seconds, the reply's utc_offset_seconds
 
   uint32_t stamp    = 0;      // millis() of the last success
   uint32_t last_try = 0;      // millis() of the last attempt, success or not
@@ -125,12 +129,18 @@ inline bool fetchWeather(const City& c, Wx& out) {
   out.precip_now = cur["precipitation"]        | 0.0f;
   out.p_now      = cur["surface_pressure"]     | 0.0f;
 
-  // "2026-10-10T07:15" -> "07:15". Already local to the city thanks to
-  // timezone=auto, so no NTP or offset table is needed on the device.
+  out.utc_offset = doc["utc_offset_seconds"] | 0;
+
+  // "2026-10-10T07:15" -> 7*60+15 minutes, then back off the city's offset to
+  // get UTC. The reply is already local to the city thanks to timezone=auto,
+  // so the board needs neither NTP nor an offset table of its own.
   const char* iso = cur["time"] | "";
-  if (strlen(iso) >= 16) {
-    memcpy(out.local_time, iso + 11, 5);
-    out.local_time[5] = '\0';
+  if (strlen(iso) >= 16 && iso[13] == ':') {
+    const int local_min = (iso[11] - '0') * 600 + (iso[12] - '0') * 60 +
+                          (iso[14] - '0') * 10 + (iso[15] - '0');
+    int m = (local_min - (int)(out.utc_offset / 60)) % 1440;
+    if (m < 0) m += 1440;
+    out.obs_min_utc = (int16_t)m;
   }
 
   out.t_max_today = day["temperature_2m_max"][0]            | 0.0f;

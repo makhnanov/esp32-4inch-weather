@@ -21,7 +21,7 @@ then precipitation and the day's range.
   Осадки      0.0 мм  |  Осадки         0%    <- precipitation
   Мин/макс   9°/20°   |  Ночью           9°   <- range / overnight low
 -----------------------------------------
- Онлайн                     обновлено 13:45   <- status / last update
+ Онлайн      ( Отключить )      обновлено 13:45   <- status / blank / updated
 ```
 
 The on-screen language is Russian, since that is what the device was built for.
@@ -36,8 +36,16 @@ elevation that is ~700 mmHg rather than ~760: the sea-level-reduced figure
 in the room.
 
 Data comes from [Open-Meteo](https://open-meteo.com/) — no API key, no sign-up.
-The observation time is rendered in each city's own timezone (`timezone=auto`),
-so the board needs no NTP client and no offset table.
+The observation time arrives with the reply (`timezone=auto`), so the board
+needs no NTP client and no offset table.
+
+**The "обновлено" clock always reads in Almaty time**, whichever tab is open.
+Tomsk is sampled at 00:15 its own time but the status bar says 22:15 — the time
+on the wall in front of the screen, which is the only one that line can be
+checked against. The observation is kept in UTC (`Wx::obs_min_utc`) alongside
+the city's `utc_offset_seconds`, and converted on the way to the screen using
+the offset of `HOME_CITY` in `config.h`; until Almaty's own reading lands,
+`HOME_UTC_OFFSET_FALLBACK` (UTC+5) stands in.
 
 ## Hardware
 
@@ -147,6 +155,42 @@ independent and touch flips along with the image by itself.
 
 The active orientation is printed at boot:
 `[boot] rotation 3 (flipped 180)`.
+
+## Blanking the screen
+
+The **«Отключить»** ("turn off") button in the middle of the bottom row opens a
+menu of spans:
+
+```
+      +----------------------------------+
+      |     На сколько отключить?        |   <- "blank it for how long?"
+      |  [1 ч] [2 ч] [3 ч] [4 ч]         |   <- hours
+      |  [5 ч] [6 ч] [7 ч] [8 ч]         |
+      |  [          Отмена          ]    |   <- cancel
+      +----------------------------------+
+```
+
+Tapping a span drops the backlight for that many hours straight away. To leave
+without picking one: «Отмена», or a tap **anywhere outside the card**; the menu
+also closes itself after 15 s, so a stray tap cannot park the display behind a
+dialog. The status-bar button stays lit while the menu is up, so it is clear
+what the card belongs to.
+
+**Touch keeps working while the screen is dark.** That is the whole reason only
+the backlight is dropped (`setBrightness(0)`), not the panel and not the touch
+controller: the XPT2046 is polled over SPI and knows nothing about whether the
+LEDs are lit. Any tap brings the picture back, and so does the span running out.
+
+While it is dark, drawing is skipped (`screenOn` in the sketch) but the weather
+keeps refreshing in the background, so waking shows current numbers rather than
+an eight-hour-old frame. The frame is painted before the backlight comes up, so
+the stale image never flashes. The card sits over both panels, so a background
+refresh leaves them alone while the menu is open and closing it repaints the
+whole screen (`repaintAll()`).
+
+The spans and the cap live in `config.h` (`SLEEP_MAX_HOURS`, `MENU_TIMEOUT_MS`,
+`BACKLIGHT_ON`); the grid is derived from `MENU_COLS` in `ui.h`, so a larger cap
+just adds a row.
 
 ## Touch
 
